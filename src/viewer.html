@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown Viewer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='15' y='5' width='70' height='90' rx='4' fill='none' stroke='%23ccc' stroke-width='6'/><line x1='30' y1='30' x2='70' y2='30' stroke='%23888' stroke-width='4'/><line x1='30' y1='45' x2='70' y2='45' stroke='%23888' stroke-width='4'/><line x1='30' y1='60' x2='55' y2='60' stroke='%23888' stroke-width='4'/></svg>">
+
+  <!-- Inter font -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <!-- GitHub Markdown CSS — only load dark, our CSS vars handle light mode -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css/github-markdown-dark.css">
+  <!-- highlight.js themes — toggle via JS -->
+  <link id="hljs-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/styles/github-dark.min.css">
+  <link id="hljs-light" rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/styles/github.min.css" disabled>
+  <!-- KaTeX CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+
+  <style>
+    /* --- Theme Variables --- */
+    :root {
+      --color-bg: #0a0a0f;
+      --color-surface: #12121a;
+      --color-status-bar: #0f0f17;
+      --color-text: #ececf1;
+      --color-text-strong: #f9f9fb;
+      --color-muted: #71717a;
+      --color-accent: #818cf8;
+      --color-code-bg: #16161e;
+      --color-border: rgba(255, 255, 255, 0.1);
+      --color-border-hr: rgba(255, 255, 255, 0.12);
+      --color-scrollbar-thumb: rgba(255, 255, 255, 0.1);
+      --color-scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+      --color-inline-code-bg: rgba(255, 255, 255, 0.1);
+      --color-copy-btn-bg: rgba(255, 255, 255, 0.08);
+      --color-copy-btn-hover: rgba(255, 255, 255, 0.14);
+      --color-copy-btn-active: rgba(255, 255, 255, 0.2);
+      --color-blockquote-border: #818cf8;
+      --color-blockquote-bg: rgba(129, 140, 248, 0.04);
+      --color-blockquote-text: #b4b4bd;
+      --color-table-stripe: rgba(255, 255, 255, 0.03);
+      --color-table-header-bg: rgba(255, 255, 255, 0.06);
+    }
+
+    html.theme-light {
+      --color-bg: #ffffff;
+      --color-surface: #f8f9fa;
+      --color-status-bar: #f0f1f3;
+      --color-text: #1a1a2e;
+      --color-text-strong: #111118;
+      --color-muted: #6b7280;
+      --color-accent: #6366f1;
+      --color-code-bg: #f3f4f6;
+      --color-border: rgba(0, 0, 0, 0.12);
+      --color-border-hr: rgba(0, 0, 0, 0.15);
+      --color-scrollbar-thumb: rgba(0, 0, 0, 0.15);
+      --color-scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+      --color-inline-code-bg: rgba(0, 0, 0, 0.06);
+      --color-copy-btn-bg: rgba(0, 0, 0, 0.06);
+      --color-copy-btn-hover: rgba(0, 0, 0, 0.1);
+      --color-copy-btn-active: rgba(0, 0, 0, 0.15);
+      --color-blockquote-border: #6366f1;
+      --color-blockquote-bg: rgba(99, 102, 241, 0.04);
+      --color-blockquote-text: #6b7280;
+      --color-table-stripe: rgba(0, 0, 0, 0.02);
+      --color-table-header-bg: rgba(0, 0, 0, 0.03);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* --- Scrollbar --- */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-scrollbar-thumb);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--color-scrollbar-thumb-hover);
+    }
+
+    /* --- Status Bar --- */
+    #status-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 36px;
+      background: var(--color-status-bar);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 11px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--color-muted);
+      z-index: 1000;
+      gap: 8px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    #status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #f87171;
+      transition: background-color 0.3s ease;
+      flex-shrink: 0;
+    }
+
+    #status-dot.connected    { background: #34d399; }
+    #status-dot.reconnecting { background: #fbbf24; animation: pulse-dot 1.5s ease-in-out infinite; }
+    #status-dot.disconnected { background: #f87171; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    #status-text {
+      user-select: none;
+    }
+
+    #status-path {
+      margin-left: auto;
+      color: var(--color-muted);
+      font-family: monospace;
+      font-size: 11px;
+    }
+
+    /* --- Settings Controls --- */
+    #settings-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 12px;
+      flex-shrink: 0;
+    }
+
+    #theme-toggle {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+      color: var(--color-muted);
+      transition: background 0.15s ease;
+      user-select: none;
+    }
+
+    #theme-toggle:hover {
+      background: var(--color-inline-code-bg);
+    }
+
+    #font-select {
+      font-size: 11px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--color-code-bg);
+      color: var(--color-muted);
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: pointer;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%2371717a'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 5px center;
+      padding-right: 16px;
+    }
+
+    #font-select:hover {
+      border-color: var(--color-muted);
+    }
+
+    /* --- Content Area --- */
+    #content-wrapper {
+      padding: 56px 24px 80px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .markdown-body {
+      background: transparent !important;
+      color: var(--color-text) !important;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      transition: opacity 0.15s ease;
+    }
+
+    .markdown-body.font-serif {
+      font-family: 'Georgia', 'Times New Roman', serif;
+    }
+
+    .markdown-body.font-mono {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
+    }
+
+    /* Override github-markdown-css text colors */
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 {
+      color: var(--color-text) !important;
+      border-bottom-color: var(--color-border) !important;
+    }
+
+    .markdown-body p,
+    .markdown-body li,
+    .markdown-body td,
+    .markdown-body th {
+      color: var(--color-text) !important;
+    }
+
+    .markdown-body strong {
+      color: var(--color-text-strong) !important;
+    }
+
+    /* --- Links --- */
+    .markdown-body a {
+      color: var(--color-accent) !important;
+      text-decoration: none !important;
+    }
+
+    .markdown-body a:hover {
+      text-decoration: underline !important;
+    }
+
+    /* --- Horizontal rules --- */
+    .markdown-body hr {
+      border-color: var(--color-border-hr) !important;
+      background: transparent !important;
+    }
+
+    /* --- Tables --- */
+    .markdown-body table {
+      border-color: var(--color-border) !important;
+    }
+
+    .markdown-body table tr {
+      background-color: transparent !important;
+      border-color: var(--color-border) !important;
+    }
+
+    .markdown-body table tr:nth-child(2n) {
+      background-color: var(--color-table-stripe) !important;
+    }
+
+    .markdown-body table th {
+      background-color: var(--color-table-header-bg) !important;
+      border-color: var(--color-border) !important;
+      font-weight: 600;
+    }
+
+    .markdown-body table td {
+      border-color: var(--color-border) !important;
+    }
+
+    /* --- Blockquotes --- */
+    .markdown-body blockquote {
+      border-left: 3px solid var(--color-blockquote-border) !important;
+      background: var(--color-blockquote-bg);
+      color: var(--color-blockquote-text) !important;
+      padding: 8px 16px !important;
+    }
+
+    /* --- Code blocks --- */
+    .markdown-body pre {
+      background: var(--color-code-bg) !important;
+      border: 1px solid var(--color-border);
+      border-radius: 8px !important;
+    }
+
+    .markdown-body code {
+      background: var(--color-inline-code-bg) !important;
+      color: var(--color-text) !important;
+      border-radius: 4px;
+      padding: 0.15em 0.4em !important;
+      font-size: 0.9em !important;
+    }
+
+    .markdown-body pre code {
+      background: transparent !important;
+    }
+
+    /* --- Empty State --- */
+    #empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 80px);
+      color: var(--color-muted);
+      font-size: 18px;
+      font-weight: 400;
+      user-select: none;
+      animation: pulse-empty 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-empty {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+
+    /* --- Code Block Copy Button --- */
+    .code-block-wrapper {
+      position: relative;
+    }
+
+    .code-block-wrapper .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 12px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--color-text);
+      background: var(--color-copy-btn-bg);
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s ease, background 0.15s ease;
+      z-index: 1;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .code-block-wrapper:hover .copy-btn {
+      opacity: 1;
+    }
+
+    .copy-btn:hover {
+      background: var(--color-copy-btn-hover);
+    }
+
+    .copy-btn:active {
+      background: var(--color-copy-btn-active);
+    }
+
+    /* --- Mermaid --- */
+    pre.mermaid {
+      background: transparent !important;
+      text-align: center;
+      padding: 16px 0;
+      border: none !important;
+    }
+
+    /* Ensure KaTeX doesn't overflow */
+    .katex-display {
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="status-bar">
+    <span id="status-dot" class="disconnected"></span>
+    <span id="status-text">Disconnected</span>
+    <span id="status-path"></span>
+    <div id="settings-controls">
+      <select id="font-select">
+        <option value="system">System</option>
+        <option value="serif">Serif</option>
+        <option value="mono">Mono</option>
+      </select>
+      <button id="theme-toggle" aria-label="Toggle theme"></button>
+    </div>
+  </div>
+
+  <div id="content-wrapper">
+    <div id="empty-state">Waiting for content...</div>
+    <article id="content" class="markdown-body" style="display:none;"></article>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex/dist/contrib/auto-render.min.js"></script>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // -------------------------------------------------------
+      // DOM references
+      // -------------------------------------------------------
+      const statusDot   = document.getElementById('status-dot');
+      const statusText  = document.getElementById('status-text');
+      const contentEl   = document.getElementById('content');
+      const emptyState  = document.getElementById('empty-state');
+      const themeToggle = document.getElementById('theme-toggle');
+      const fontSelect  = document.getElementById('font-select');
+
+      // Content state (declared early so applyTheme can reference it)
+      let rawMarkdown = '';
+
+      // -------------------------------------------------------
+      // Theme management
+      // -------------------------------------------------------
+      function getStoredTheme() {
+        return localStorage.getItem('mdv-theme') || 'dark';
+      }
+
+      function applyTheme(theme, rerender) {
+        var html = document.documentElement;
+        html.classList.remove('theme-dark', 'theme-light');
+        html.classList.add('theme-' + theme);
+        themeToggle.textContent = theme === 'dark' ? '\u263E' : '\u2600';
+        localStorage.setItem('mdv-theme', theme);
+
+        // Swap highlight.js stylesheet
+        var hljsDark = document.getElementById('hljs-dark');
+        var hljsLight = document.getElementById('hljs-light');
+        if (theme === 'dark') {
+          hljsDark.disabled = false;
+          hljsLight.disabled = true;
+        } else {
+          hljsDark.disabled = true;
+          hljsLight.disabled = false;
+        }
+
+        // Update mermaid theme
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: theme === 'dark' ? 'dark' : 'default',
+        });
+
+        // Re-render existing content so mermaid + hljs pick up new theme
+        if (rerender && rawMarkdown) {
+          contentEl.innerHTML = md.render(rawMarkdown);
+          postRender();
+        }
+      }
+
+      themeToggle.addEventListener('click', function () {
+        var current = getStoredTheme();
+        applyTheme(current === 'dark' ? 'light' : 'dark', true);
+      });
+
+      // Initialize theme (no re-render needed on load)
+      applyTheme(getStoredTheme(), false);
+
+      // -------------------------------------------------------
+      // Font management
+      // -------------------------------------------------------
+      function getStoredFont() {
+        return localStorage.getItem('mdv-font') || 'system';
+      }
+
+      function applyFont(font) {
+        contentEl.classList.remove('font-serif', 'font-mono');
+        if (font === 'serif') {
+          contentEl.classList.add('font-serif');
+        } else if (font === 'mono') {
+          contentEl.classList.add('font-mono');
+        }
+        fontSelect.value = font;
+        localStorage.setItem('mdv-font', font);
+      }
+
+      fontSelect.addEventListener('change', function () {
+        applyFont(fontSelect.value);
+      });
+
+      // Initialize font
+      applyFont(getStoredFont());
+
+      // -------------------------------------------------------
+      // Mermaid init (initial call, theme set by applyTheme)
+      // -------------------------------------------------------
+
+      // -------------------------------------------------------
+      // markdown-it setup
+      // -------------------------------------------------------
+      const md = window.markdownit({
+        html: true,
+        linkify: true,
+        typographer: true,
+        highlight: function (str, lang) {
+          // Mermaid blocks are handled separately — no highlighting
+          if (lang === 'mermaid') {
+            return '';  // returning empty string signals our fence override
+          }
+          if (lang && hljs.getLanguage(lang)) {
+            try {
+              return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
+            } catch (_) { /* fall through */ }
+          }
+          try {
+            return hljs.highlightAuto(str).value;
+          } catch (_) { /* fall through */ }
+          return '';  // use external default escaping
+        },
+      });
+
+      // Override the fence renderer to handle mermaid blocks and add copy buttons
+      const defaultFenceRenderer = md.renderer.rules.fence ||
+        function (tokens, idx, options, env, self) {
+          return self.renderToken(tokens, idx, options);
+        };
+
+      md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+        const token = tokens[idx];
+        const info  = token.info ? token.info.trim() : '';
+
+        if (info === 'mermaid') {
+          // Render as a mermaid diagram placeholder
+          const escaped = md.utils.escapeHtml(token.content);
+          return '<pre class="mermaid">' + escaped + '</pre>\n';
+        }
+
+        // Default rendering — then wrap with copy button
+        const rendered = defaultFenceRenderer(tokens, idx, options, env, self);
+        return '<div class="code-block-wrapper">' +
+          '<button class="copy-btn" aria-label="Copy code">Copy</button>' +
+          rendered +
+          '</div>\n';
+      };
+
+      // -------------------------------------------------------
+      // Copy button delegation
+      // -------------------------------------------------------
+      contentEl.addEventListener('click', function (e) {
+        if (!e.target.classList.contains('copy-btn')) return;
+        const wrapper = e.target.closest('.code-block-wrapper');
+        if (!wrapper) return;
+        const codeEl = wrapper.querySelector('code');
+        if (!codeEl) return;
+
+        navigator.clipboard.writeText(codeEl.textContent).then(function () {
+          e.target.textContent = 'Copied!';
+          setTimeout(function () { e.target.textContent = 'Copy'; }, 1500);
+        });
+      });
+
+      // -------------------------------------------------------
+      // Post-render: KaTeX + Mermaid
+      // -------------------------------------------------------
+      function postRender() {
+        // KaTeX auto-render
+        if (window.renderMathInElement) {
+          renderMathInElement(contentEl, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$',  right: '$',  display: false },
+            ],
+            throwOnError: false,
+          });
+        }
+
+        // Mermaid: render any new diagram blocks
+        const mermaidEls = contentEl.querySelectorAll('pre.mermaid:not([data-processed])');
+        if (mermaidEls.length > 0) {
+          mermaid.run({ nodes: mermaidEls }).catch(function (err) {
+            console.warn('Mermaid render error:', err);
+          });
+        }
+      }
+
+      function showContent(show) {
+        contentEl.style.display    = show ? 'block' : 'none';
+        emptyState.style.display   = show ? 'none'  : 'flex';
+      }
+
+      function renderFull(markdownStr) {
+        rawMarkdown = markdownStr;
+        if (!rawMarkdown) {
+          contentEl.innerHTML = '';
+          showContent(false);
+          return;
+        }
+        showContent(true);
+        contentEl.innerHTML = md.render(rawMarkdown);
+        postRender();
+        window.scrollTo({ top: 0 });
+      }
+
+      function renderAppend(markdownStr) {
+        rawMarkdown += markdownStr;
+        if (!rawMarkdown) {
+          showContent(false);
+          return;
+        }
+        showContent(true);
+        // Re-render the full accumulated markdown to get correct parsing
+        contentEl.innerHTML = md.render(rawMarkdown);
+        postRender();
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
+
+      function clearContent() {
+        rawMarkdown = '';
+        contentEl.innerHTML = '';
+        showContent(false);
+      }
+
+      // -------------------------------------------------------
+      // Path-aware WebSocket with exponential backoff
+      // -------------------------------------------------------
+      const port = window.location.port || '3333';
+      const viewPath = window.location.pathname || '/';
+      const wsUrl = 'ws://localhost:' + port + '/?path=' + encodeURIComponent(viewPath);
+
+      // Show path in title and status bar
+      if (viewPath !== '/') {
+        document.title = viewPath.slice(1) + ' \u2014 Markdown Viewer';
+        document.getElementById('status-path').textContent = viewPath;
+      }
+
+      let ws = null;
+      let reconnectDelay = 500;   // ms, starting delay
+      const MAX_RECONNECT_DELAY = 30000;
+      let reconnectTimer = null;
+
+      function setStatus(state, text) {
+        statusDot.className = state;
+        statusText.textContent = text;
+      }
+
+      function connect() {
+        if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+          return;
+        }
+
+        setStatus('reconnecting', 'Connecting...');
+
+        ws = new WebSocket(wsUrl);
+
+        ws.addEventListener('open', function () {
+          reconnectDelay = 500;
+          setStatus('connected', 'Connected');
+        });
+
+        ws.addEventListener('message', function (event) {
+          let msg;
+          try {
+            msg = JSON.parse(event.data);
+          } catch (err) {
+            console.warn('Invalid WS message:', err);
+            return;
+          }
+
+          switch (msg.type) {
+            case 'render':
+              renderFull(msg.content || '');
+              break;
+            case 'append':
+              renderAppend(msg.content || '');
+              break;
+            case 'clear':
+              clearContent();
+              break;
+            default:
+              console.warn('Unknown message type:', msg.type);
+          }
+        });
+
+        ws.addEventListener('close', function () {
+          setStatus('disconnected', 'Disconnected');
+          scheduleReconnect();
+        });
+
+        ws.addEventListener('error', function () {
+          // The close event will fire after this, triggering reconnect
+          ws.close();
+        });
+      }
+
+      function scheduleReconnect() {
+        if (reconnectTimer) return;
+        setStatus('reconnecting', 'Reconnecting in ' + Math.round(reconnectDelay / 1000) + 's...');
+        reconnectTimer = setTimeout(function () {
+          reconnectTimer = null;
+          reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+          connect();
+        }, reconnectDelay);
+      }
+
+      // Start
+      connect();
+    })();
+  </script>
+</body>
+</html>
