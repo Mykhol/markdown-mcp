@@ -4,10 +4,40 @@
   "description": "MCP server that renders markdown in a browser window with live updates",
   "type": "module",
   "main": "dist/server.js",
+  "bin": {
+    "mcp-markdown-viewer": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "src/viewer.html"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "markdown",
+    "viewer",
+    "model-context-protocol",
+    "claude",
+    "mermaid",
+    "katex"
+  ],
+  "author": "Michael Howell",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mykhol/markdown-mcp.git"
+  },
+  "homepage": "https://github.com/Mykhol/markdown-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/Mykhol/markdown-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

@@ -27,13 +27,6 @@ An MCP server that renders markdown in a browser window with live updates via We
 
 ## Setup
 
-### Install dependencies and build
-
-```bash
-npm install
-npm run build
-```
-
 ### Configure in Claude Code
 
 Add to your Claude Code MCP settings (`~/.claude/settings.json` or project-level `.mcp.json`):
@@ -42,14 +35,38 @@ Add to your Claude Code MCP settings (`~/.claude/settings.json` or project-level
 {
   "mcpServers": {
     "markdown-viewer": {
-      "command": "node",
-      "args": ["/path/to/mcp-markdown-viewer/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "mcp-markdown-viewer"]
     }
   }
 }
 ```
 
 The server picks a random available port on startup and opens browser tabs automatically when content is rendered.
+
+### Install from source
+
+If you prefer to run from a local checkout:
+
+```bash
+git clone https://github.com/Mykhol/markdown-mcp.git
+cd markdown-mcp
+npm install
+npm run build
+```
+
+Then point your MCP config at the built file:
+
+```json
+{
+  "mcpServers": {
+    "markdown-viewer": {
+      "command": "node",
+      "args": ["/path/to/markdown-mcp/dist/server.js"]
+    }
+  }
+}
+```
 
 ## Usage
 
