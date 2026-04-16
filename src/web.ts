@@ -45,7 +45,7 @@ export function startWebServer(): Promise<void> {
   const viewerPath = path.resolve(__dirname, "../src/viewer.html");
 
   app.get("/{*path}", (_req, res) => {
-    res.sendFile(viewerPath);
+    res.sendFile(viewerPath, { dotfiles: "allow" });
   });
 
   httpServer = createServer(app);
