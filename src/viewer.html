@@ -157,7 +157,8 @@
       flex-shrink: 0;
     }
 
-    #theme-toggle {
+    #theme-toggle,
+    #pdf-button {
       background: none;
       border: none;
       cursor: pointer;
@@ -170,8 +171,20 @@
       user-select: none;
     }
 
-    #theme-toggle:hover {
+    #theme-toggle:hover,
+    #pdf-button:hover {
       background: var(--color-inline-code-bg);
+    }
+
+    #pdf-button {
+      font-size: 11px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 3px 8px;
+    }
+
+    #pdf-button:disabled {
+      opacity: 0.5;
+      cursor: default;
     }
 
     #font-select {
@@ -375,6 +388,34 @@
       overflow-x: auto;
       overflow-y: hidden;
     }
+
+    /* --- Print / PDF export --- */
+    @media print {
+      html, body {
+        background: var(--color-bg) !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      #status-bar { display: none !important; }
+      #content-wrapper {
+        padding: 32px 40px !important;
+        max-width: none !important;
+      }
+      .code-block-wrapper .copy-btn { display: none !important; }
+      .markdown-body pre,
+      .markdown-body code,
+      .markdown-body blockquote,
+      .markdown-body table th,
+      .markdown-body table tr:nth-child(2n) {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      /* Avoid breaking inside common elements (only relevant if browser splits anyway) */
+      pre, blockquote, table, .katex-display, pre.mermaid {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body>
@@ -388,6 +429,7 @@
         <option value="serif">Serif</option>
         <option value="mono">Mono</option>
       </select>
+      <button id="pdf-button" aria-label="Download as PDF" title="Download as PDF (single long page)">PDF</button>
       <button id="theme-toggle" aria-label="Toggle theme"></button>
     </div>
   </div>
@@ -417,6 +459,7 @@
       const emptyState  = document.getElementById('empty-state');
       const themeToggle = document.getElementById('theme-toggle');
       const fontSelect  = document.getElementById('font-select');
+      const pdfButton   = document.getElementById('pdf-button');
 
       // Content state (declared early so applyTheme can reference it)
       let rawMarkdown = '';
@@ -455,8 +498,9 @@
         // Re-render existing content so mermaid + hljs pick up new theme
         if (rerender && rawMarkdown) {
           contentEl.innerHTML = md.render(rawMarkdown);
-          postRender();
+          return postRender();
         }
+        return Promise.resolve();
       }
 
       themeToggle.addEventListener('click', function () {
@@ -491,6 +535,59 @@
 
       // Initialize font
       applyFont(getStoredFont());
+
+      // -------------------------------------------------------
+      // PDF export — single long page sized to content
+      // -------------------------------------------------------
+      // Browsers cap @page size around 200in (~19200px at 96dpi). If content
+      // exceeds that we fall back to A4 and let the browser paginate.
+      const MAX_PDF_PAGE_PX = 19000;
+
+      // PDF exports always use light mode — printed/shared documents
+      // should have light backgrounds regardless of the viewer's theme.
+      async function downloadPDF() {
+        if (!rawMarkdown) return;
+        if (pdfButton.disabled) return;
+        pdfButton.disabled = true;
+
+        const originalTheme = getStoredTheme();
+        const switchedTheme = originalTheme !== 'light';
+
+        try {
+          if (switchedTheme) {
+            await applyTheme('light', true);
+          }
+
+          // Width: content max-width (860) + print padding (40+40) = 940.
+          const widthPx = 940;
+          // Height: full document scroll height. Status bar is position:fixed
+          // so it doesn't contribute to scrollHeight. Add a little bottom slack.
+          const heightPx = Math.min(
+            document.documentElement.scrollHeight + 40,
+            MAX_PDF_PAGE_PX
+          );
+
+          const pageStyle = document.createElement('style');
+          pageStyle.id = 'dynamic-page-size';
+          pageStyle.textContent =
+            '@page { size: ' + widthPx + 'px ' + heightPx + 'px; margin: 0; }';
+          document.head.appendChild(pageStyle);
+
+          // Two rAFs to ensure layout has flushed after theme + style changes.
+          await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
+
+          window.print();
+
+          pageStyle.remove();
+        } finally {
+          if (switchedTheme) {
+            await applyTheme(originalTheme, true);
+          }
+          pdfButton.disabled = false;
+        }
+      }
+
+      pdfButton.addEventListener('click', function () { downloadPDF(); });
 
       // -------------------------------------------------------
       // Mermaid init (initial call, theme set by applyTheme)
@@ -575,13 +672,16 @@
           });
         }
 
-        // Mermaid: render any new diagram blocks
+        // Mermaid: render any new diagram blocks. Returns a promise that
+        // resolves once all diagrams are drawn (so callers like the PDF
+        // exporter can wait for them before snapshotting layout).
         const mermaidEls = contentEl.querySelectorAll('pre.mermaid:not([data-processed])');
         if (mermaidEls.length > 0) {
-          mermaid.run({ nodes: mermaidEls }).catch(function (err) {
+          return mermaid.run({ nodes: mermaidEls }).catch(function (err) {
             console.warn('Mermaid render error:', err);
           });
         }
+        return Promise.resolve();
       }
 
       function showContent(show) {
