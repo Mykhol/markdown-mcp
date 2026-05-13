@@ -34,6 +34,23 @@ Or to a project-level `.mcp.json`:
 
 The server picks a random available port on startup and opens browser tabs automatically when content is rendered.
 
+## Interactive Q&A and Quote (1.2.0)
+
+Highlight any text in the rendered document — a small popover appears with two actions:
+
+- **💬 Ask** — type a question. It opens a thread in the viewer's side panel; Claude's answer renders back into that thread as full markdown (Mermaid, KaTeX, code highlighting included).
+- **📎 Quote** — type an optional comment. The excerpt is dropped into Claude's next-turn context with no thread; Claude replies in chat instead of the viewer.
+
+Tools the server exposes for this:
+
+| Tool | Purpose |
+| --- | --- |
+| `get_pending_questions` | Drain unseen Q&A threads. Returns each `id`, highlighted text, and question. |
+| `answer_question` | Post a markdown answer back to a thread by `id`. Renders live in the panel. |
+| `get_pending_selections` | Drain context-only quotes (excerpt + optional comment). Do **not** answer these in the viewer. |
+
+To make Claude check the viewer automatically, add a hint to your `CLAUDE.md` — e.g. *"if I mention questions in the viewer, call `get_pending_questions` first."*
+
 ## Getting Claude to use it automatically
 
 Claude won't use the viewer unless you tell it to. Add something like this to your `CLAUDE.md` (global or project-level):

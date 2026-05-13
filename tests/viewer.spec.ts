@@ -1,5 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { startWebServer, pushContent, clearContent, getPort } from "../dist/web.js";
+import {
+  startWebServer,
+  pushContent,
+  clearContent,
+  getPort,
+  drainPendingQuestions,
+  drainPendingSelections,
+  answerQuestion,
+  clearThreads,
+} from "../dist/web.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -169,6 +178,97 @@ test.describe("PDF export", () => {
     expect(cls).toContain("theme-light");
     // Theme stays light afterwards.
     await expect(page.locator("html")).toHaveClass(/theme-light/);
+  });
+
+  test("user can select text, ask a question, and see Claude's answer in the panel", async ({ page }) => {
+    // Drain anything stale.
+    drainPendingQuestions();
+
+    pushContent("# Doc\n\nThe quick brown fox jumps over the lazy dog.\n", "/");
+    await page.goto(baseUrl);
+
+    // Select the word "quick" by double-clicking it.
+    const target = page.locator("p", { hasText: "quick brown fox" });
+    await target.evaluate((el) => {
+      const textNode = el.firstChild!;
+      const range = document.createRange();
+      range.setStart(textNode, 4);
+      range.setEnd(textNode, 9);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.dispatchEvent(new MouseEvent("mouseup"));
+    });
+
+    // Popover appears.
+    const popover = page.locator("#selection-popover");
+    await expect(popover).toBeVisible();
+    await popover.locator("#selection-popover-collapsed .ask-btn").first().click();
+
+    // Expanded form.
+    await popover.locator("textarea").fill("What does this mean?");
+    await popover.locator(".submit-btn").click();
+
+    // Panel opens, thread shows pending state.
+    await expect(page.locator("#qa-panel.open")).toBeVisible();
+    const thread = page.locator(".qa-thread").first();
+    await expect(thread).toBeVisible();
+    await expect(thread.locator(".qa-question")).toHaveText("What does this mean?");
+    await expect(thread.locator(".qa-pending")).toBeVisible();
+    await expect(page.locator("#qa-badge")).toHaveClass(/visible/);
+
+    // Server drains the question.
+    const pending = drainPendingQuestions();
+    expect(pending.length).toBe(1);
+    expect(pending[0].question).toBe("What does this mean?");
+    expect(pending[0].selection).toBe("quick");
+
+    // Claude answers — should broadcast and render as markdown in the panel.
+    const result = answerQuestion(pending[0].id, "It means **fast**.");
+    expect(result).not.toBeNull();
+
+    await expect(thread.locator(".qa-answer strong")).toHaveText("fast");
+    await expect(thread.locator(".qa-pending")).toHaveCount(0);
+    await expect(page.locator("#qa-badge")).not.toHaveClass(/visible/);
+  });
+
+  test("user can quote selection with a comment — context only, no panel thread", async ({ page }) => {
+    drainPendingSelections();
+    drainPendingQuestions();
+    clearThreads();
+
+    pushContent("# Doc\n\nThe quick brown fox jumps over the lazy dog.\n", "/");
+    await page.goto(baseUrl);
+
+    const target = page.locator("p", { hasText: "quick brown fox" });
+    await target.evaluate((el) => {
+      const textNode = el.firstChild!;
+      const range = document.createRange();
+      range.setStart(textNode, 4);
+      range.setEnd(textNode, 19); // "quick brown fox"
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.dispatchEvent(new MouseEvent("mouseup"));
+    });
+
+    const popover = page.locator("#selection-popover");
+    await expect(popover).toBeVisible();
+    await popover.locator(".quote-btn").click();
+
+    await expect(popover.locator("#popover-mode-label")).toContainText("Drop into context");
+    await popover.locator("textarea").fill("worth keeping in mind");
+    await popover.locator(".submit-btn").click();
+
+    // No thread created.
+    await expect(page.locator(".qa-thread")).toHaveCount(0);
+    // Toast briefly appears.
+    await expect(page.locator("#quote-toast")).toBeVisible();
+
+    const sels = drainPendingSelections();
+    expect(sels.length).toBe(1);
+    expect(sels[0].selection).toBe("quick brown fox");
+    expect(sels[0].comment).toBe("worth keeping in mind");
   });
 
   test("@page size height roughly matches document scrollHeight", async ({ page }) => {
