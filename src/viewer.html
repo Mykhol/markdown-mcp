@@ -270,7 +270,14 @@
     }
 
     /* --- Tables --- */
+    /* Let tables extend rightward beyond the 860px content column when
+       wider than the text, so we don't need a horizontal scrollbar unless
+       the viewport itself is narrower than the table. Narrow tables stay
+       left-anchored to the text column. */
     .markdown-body table {
+      display: table;
+      width: max-content;
+      max-width: calc(50vw + 382px);
       border-color: var(--color-border) !important;
     }
 
