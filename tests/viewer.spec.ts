@@ -103,6 +103,23 @@ test("copy button on code blocks copies code to clipboard", async ({ page, conte
   expect(clip.trim()).toBe("hello world");
 });
 
+test("copy button on mermaid diagrams copies the diagram source", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  pushContent("```mermaid\nflowchart LR\n  A --> B\n```\n", "/");
+  await page.goto(baseUrl);
+
+  // Source text is replaced by the rendered SVG, so the button must copy the
+  // original diagram source stashed before mermaid ran.
+  await expect(page.locator("pre.mermaid svg")).toBeVisible();
+
+  const wrapper = page.locator(".mermaid-wrapper");
+  await wrapper.hover();
+  await wrapper.locator(".copy-btn").click();
+
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip.trim()).toBe("flowchart LR\n  A --> B");
+});
+
 test("theme toggle switches between dark and light, persisting via localStorage", async ({ page }) => {
   pushContent("# Test", "/");
   await page.goto(baseUrl);
