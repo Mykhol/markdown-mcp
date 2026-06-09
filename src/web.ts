@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import open from "open";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage } from "node:http";
 
@@ -92,6 +93,16 @@ export function appendContent(content: string, viewPath: string = "/"): void {
   const current = contentByPath.get(p) || "";
   contentByPath.set(p, current + content);
   broadcast(p, { type: "append", content });
+}
+
+export async function pushFile(
+  filePath: string,
+  viewPath: string = "/",
+): Promise<{ resolvedPath: string; bytes: number }> {
+  const resolvedPath = path.resolve(filePath);
+  const content = await readFile(resolvedPath, "utf8");
+  pushContent(content, viewPath);
+  return { resolvedPath, bytes: Buffer.byteLength(content) };
 }
 
 export function clearContent(viewPath: string = "/"): void {

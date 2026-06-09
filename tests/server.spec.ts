@@ -1,10 +1,14 @@
 import { test, expect } from "@playwright/test";
 import WSPkg from "ws";
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   startWebServer,
   pushContent,
   appendContent,
   clearContent,
+  pushFile,
   getPort,
   listPaths,
 } from "../dist/web.js";
@@ -134,4 +138,29 @@ test("path normalization treats trailing slash as same path", async () => {
   const { ws, firstMessage } = connect("/normalize/");
   expect(await firstMessage).toEqual({ type: "render", content: "# Same" });
   ws.close();
+});
+
+test("pushFile rejects when the file does not exist", async () => {
+  const missing = join(tmpdir(), "render-file-does-not-exist.md");
+  await expect(pushFile(missing, "/")).rejects.toThrow();
+});
+
+test("pushFile renders the file's contents and reports its absolute path and size", async () => {
+  const body = "# Report\n\nfrom a file";
+  const filePath = join(tmpdir(), `render-file-meta-${Date.now()}.md`);
+  await writeFile(filePath, body);
+  try {
+    const { ws, firstMessage } = connect("/file-meta");
+    await firstMessage; // initial empty render
+    await waitOpen(ws);
+
+    const pending = nextMessage(ws);
+    const result = await pushFile(filePath, "/file-meta");
+    expect(await pending).toEqual({ type: "render", content: body });
+    expect(result.resolvedPath).toBe(filePath);
+    expect(result.bytes).toBe(Buffer.byteLength(body));
+    ws.close();
+  } finally {
+    await unlink(filePath);
+  }
 });

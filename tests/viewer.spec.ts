@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   startWebServer,
   pushContent,
@@ -39,6 +42,39 @@ test("renders a Mermaid diagram into an SVG", async ({ page }) => {
   pushContent("```mermaid\nflowchart LR\n  A --> B\n```\n", "/");
   await page.goto(baseUrl);
   await expect(page.locator("pre.mermaid svg")).toBeVisible();
+});
+
+test("Mermaid node labels contrast with custom fills in dark mode", async ({ page }) => {
+  // A light custom fill (`style B fill:#ffcccc`) must get dark label text,
+  // while a dark default node keeps light text. Regression for white-on-pink.
+  pushContent(
+    "```mermaid\nflowchart LR\n  A[Default] --> B[Pink]\n  style B fill:#ffcccc\n```\n",
+    "/",
+  );
+  await page.goto(baseUrl);
+  await expect(page.locator("html")).toHaveClass(/theme-dark/);
+  await expect(page.locator("pre.mermaid svg .node")).toHaveCount(2);
+
+  const colors = await page.evaluate(() => {
+    const lum = (rgb: string) => {
+      const [r, g, b] = rgb.match(/[\d.]+/g)!.slice(0, 3).map((v) => {
+        const n = Number(v) / 255;
+        return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const out: Record<string, number> = {};
+    document.querySelectorAll("pre.mermaid svg .node").forEach((node) => {
+      const label = node.textContent!.trim();
+      const p = node.querySelector("foreignObject p, foreignObject span.nodeLabel")!;
+      out[label] = lum(getComputedStyle(p).color);
+    });
+    return out;
+  });
+
+  // Dark default fill → light text (high luminance); light pink fill → dark text.
+  expect(colors["Default"]).toBeGreaterThan(0.5);
+  expect(colors["Pink"]).toBeLessThan(0.1);
 });
 
 test("renders KaTeX math", async ({ page }) => {
@@ -106,6 +142,20 @@ test("append message extends content without re-rendering from scratch", async (
   appendContent("More text here.", "/");
 
   await expect(page.locator("p")).toContainText("More text here.");
+});
+
+test("render_file renders a markdown file from disk", async ({ page }) => {
+  const { pushFile } = await import("../dist/web.js");
+  const filePath = join(tmpdir(), `render-file-${Date.now()}.md`);
+  await writeFile(filePath, "# From a file\n\nLoaded from disk.");
+  try {
+    await pushFile(filePath, "/");
+    await page.goto(baseUrl);
+    await expect(page.locator("h1")).toHaveText("From a file");
+    await expect(page.locator("p")).toContainText("Loaded from disk.");
+  } finally {
+    await unlink(filePath);
+  }
 });
 
 test.describe("PDF export", () => {

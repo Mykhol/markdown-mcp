@@ -667,6 +667,43 @@
       // -------------------------------------------------------
       // Post-render: KaTeX + Mermaid
       // -------------------------------------------------------
+
+      // Relative luminance (WCAG) of a CSS rgb()/rgba() color string.
+      // Returns null for colors we can't parse (e.g. 'none', gradients).
+      function colorLuminance(rgb) {
+        const m = (rgb || '').match(/[\d.]+/g);
+        if (!m || m.length < 3) return null;
+        const channels = m.slice(0, 3).map(function (v) {
+          v = Number(v) / 255;
+          return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+      }
+
+      // Mermaid's dark theme uses light label text, which is unreadable on
+      // light custom node fills (e.g. `style X fill:#ffcccc`). And the
+      // .markdown-body color rules bleed into mermaid's HTML (foreignObject)
+      // labels, forcing them toward the viewer's near-white text color.
+      // Pick each node label's color from its own box fill luminance so
+      // colored nodes stay legible in any theme. !important beats both the
+      // mermaid stylesheet and the .markdown-body override.
+      function fixMermaidLabelContrast(root) {
+        root.querySelectorAll('pre.mermaid .node').forEach(function (node) {
+          const shape = node.querySelector('rect, polygon, circle, ellipse, path');
+          if (!shape) return;
+          const lum = colorLuminance(getComputedStyle(shape).fill);
+          if (lum === null) return;
+          // 0.179 is the WCAG crossover where black vs white text contrast is equal.
+          const color = lum > 0.179 ? '#000' : '#fff';
+          node.querySelectorAll('foreignObject p, foreignObject span, .nodeLabel').forEach(function (el) {
+            el.style.setProperty('color', color, 'important');
+          });
+          node.querySelectorAll('text, tspan').forEach(function (el) {
+            el.style.setProperty('fill', color, 'important');
+          });
+        });
+      }
+
       function postRender() {
         // KaTeX auto-render
         if (window.renderMathInElement) {
@@ -684,9 +721,11 @@
         // exporter can wait for them before snapshotting layout).
         const mermaidEls = contentEl.querySelectorAll('pre.mermaid:not([data-processed])');
         if (mermaidEls.length > 0) {
-          return mermaid.run({ nodes: mermaidEls }).catch(function (err) {
-            console.warn('Mermaid render error:', err);
-          });
+          return mermaid.run({ nodes: mermaidEls })
+            .then(function () { fixMermaidLabelContrast(contentEl); })
+            .catch(function (err) {
+              console.warn('Mermaid render error:', err);
+            });
         }
         return Promise.resolve();
       }
