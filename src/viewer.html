@@ -399,6 +399,23 @@
       overflow-y: hidden;
     }
 
+    /* --- GitHub-style task list checkboxes --- */
+    .markdown-body .task-list-item {
+      list-style-type: none;
+    }
+    .markdown-body .task-list-item input[type="checkbox"] {
+      margin: 0 0.5em 0.25em -1.4em;
+      vertical-align: middle;
+      width: 1em;
+      height: 1em;
+      accent-color: var(--color-accent);
+      cursor: default;
+    }
+    .markdown-body .task-list-item label {
+      display: inline;
+      cursor: default;
+    }
+
     /* --- Print / PDF export --- */
     @media print {
       html, body {
@@ -452,6 +469,7 @@
 
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists/dist/markdown-it-task-lists.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release/build/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
@@ -627,6 +645,15 @@
           return '';  // use external default escaping
         },
       });
+
+      // GitHub-style task list checkboxes: [ ] and [x]
+      if (window.markdownitTaskLists) {
+        md.use(window.markdownitTaskLists, {
+          enabled: false,   // read-only (display only, not interactive)
+          label: true,      // wrap the label text for proper styling
+          lineNumber: false,
+        });
+      }
 
       // Override the fence renderer to handle mermaid blocks and add copy buttons
       const defaultFenceRenderer = md.renderer.rules.fence ||

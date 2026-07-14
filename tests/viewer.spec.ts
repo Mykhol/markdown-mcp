@@ -90,6 +90,15 @@ test("syntax-highlights fenced code blocks", async ({ page }) => {
   await expect(page.locator("code .hljs-keyword").first()).toBeVisible();
 });
 
+test("renders GitHub-style task list checkboxes", async ({ page }) => {
+  pushContent("- [ ] unchecked item\n- [x] checked item\n", "/");
+  await page.goto(baseUrl);
+  const checkboxes = page.locator(".task-list-item input[type='checkbox']");
+  await expect(checkboxes).toHaveCount(2);
+  await expect(checkboxes.nth(0)).not.toBeChecked();
+  await expect(checkboxes.nth(1)).toBeChecked();
+});
+
 test("copy button on code blocks copies code to clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   pushContent("```\nhello world\n```\n", "/");
