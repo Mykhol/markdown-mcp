@@ -4,8 +4,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   startWebServer,
-  pushContent,
-  appendContent,
   clearContent,
   pushFile,
   openBrowser,
@@ -19,40 +17,8 @@ const server = new McpServer({
 });
 
 server.tool(
-  "render_markdown",
-  "Render rich markdown in a browser viewer with live updates. Supports Mermaid diagrams (flowcharts, sequence diagrams, ERDs, Gantt charts via ```mermaid code blocks), syntax-highlighted code, KaTeX math, tables, and full GitHub-flavored markdown. Use Mermaid diagrams liberally to visualize architectures, flows, and relationships. Use 'path' to render to separate pages (e.g. /plan, /review, /agent-1) — each path opens its own browser tab.",
-  {
-    content: z.string().describe("Markdown content to render"),
-    path: z
-      .string()
-      .optional()
-      .describe(
-        "URL path for this viewer page (e.g. '/plan', '/review'). Different paths open separate browser tabs. Defaults to '/'.",
-      ),
-    title: z.string().optional().describe("Optional title for the viewer tab"),
-  },
-  async ({ content, path }) => {
-    const viewPath = path || "/";
-    pushContent(content, viewPath);
-    await openBrowser(viewPath);
-    const url =
-      viewPath === "/"
-        ? `http://localhost:${getPort()}`
-        : `http://localhost:${getPort()}${viewPath}`;
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Rendered markdown in viewer at ${url}`,
-        },
-      ],
-    };
-  },
-);
-
-server.tool(
   "render_file",
-  "Render a markdown file from the local filesystem in the browser viewer. Reads the file at call time and renders its current contents (Mermaid, KaTeX, syntax highlighting, tables — same as render_markdown). Use 'path' to render to a separate page/tab. Provide an absolute file path when possible; relative paths resolve against the server's working directory.",
+  "Render a markdown file from the local filesystem in the browser viewer. Reads the file at call time and renders its current contents (Mermaid, KaTeX, syntax highlighting, tables, and full GitHub-flavored markdown). Use 'path' to render to a separate page/tab. Provide an absolute file path when possible; relative paths resolve against the server's working directory.",
   {
     file: z
       .string()
@@ -94,26 +60,6 @@ server.tool(
         ],
       };
     }
-  },
-);
-
-server.tool(
-  "append_markdown",
-  "Append markdown content to the existing viewer content.",
-  {
-    content: z.string().describe("Markdown content to append"),
-    path: z
-      .string()
-      .optional()
-      .describe("URL path for the viewer page to append to. Defaults to '/'."),
-  },
-  async ({ content, path }) => {
-    const viewPath = path || "/";
-    appendContent(content, viewPath);
-    await openBrowser(viewPath);
-    return {
-      content: [{ type: "text", text: "Appended content to viewer" }],
-    };
   },
 );
 

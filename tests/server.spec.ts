@@ -6,7 +6,6 @@ import { join } from "node:path";
 import {
   startWebServer,
   pushContent,
-  appendContent,
   clearContent,
   pushFile,
   getPort,
@@ -72,17 +71,6 @@ test("pushContent broadcasts a render message", async () => {
   const pending = nextMessage(ws);
   pushContent("# Hello", "/");
   expect(await pending).toEqual({ type: "render", content: "# Hello" });
-  ws.close();
-});
-
-test("appendContent sends an append message with only the delta", async () => {
-  pushContent("first", "/");
-  const { ws, firstMessage } = connect("/");
-  expect(await firstMessage).toEqual({ type: "render", content: "first" });
-
-  const pending = nextMessage(ws);
-  appendContent(" second", "/");
-  expect(await pending).toEqual({ type: "append", content: " second" });
   ws.close();
 });
 

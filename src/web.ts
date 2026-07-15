@@ -88,13 +88,6 @@ export function pushContent(content: string, viewPath: string = "/"): void {
   broadcast(p, { type: "render", content });
 }
 
-export function appendContent(content: string, viewPath: string = "/"): void {
-  const p = normalizePath(viewPath);
-  const current = contentByPath.get(p) || "";
-  contentByPath.set(p, current + content);
-  broadcast(p, { type: "append", content });
-}
-
 export async function pushFile(
   filePath: string,
   viewPath: string = "/",

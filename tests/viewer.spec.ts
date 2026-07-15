@@ -157,19 +157,6 @@ test("font select swaps the markdown body font class", async ({ page }) => {
   await expect(page.locator("#content")).not.toHaveClass(/font-(serif|mono)/);
 });
 
-test("append message extends content without re-rendering from scratch", async ({ page }) => {
-  pushContent("# Start\n\n", "/");
-  await page.goto(baseUrl);
-  await expect(page.locator("h1")).toHaveText("Start");
-
-  // Use the running server's appendContent — the WS listener on the page
-  // will receive the message and re-render the accumulated markdown.
-  const { appendContent } = await import("../dist/web.js");
-  appendContent("More text here.", "/");
-
-  await expect(page.locator("p")).toContainText("More text here.");
-});
-
 test("render_file renders a markdown file from disk", async ({ page }) => {
   const { pushFile } = await import("../dist/web.js");
   const filePath = join(tmpdir(), `render-file-${Date.now()}.md`);
