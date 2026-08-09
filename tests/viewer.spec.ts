@@ -98,6 +98,15 @@ test("syntax-highlights fenced code blocks", async ({ page }) => {
   await expect(page.locator("code .hljs-keyword").first()).toBeVisible();
 });
 
+test("renders GitHub-style task list checkboxes", async ({ page }) => {
+  pushContent("- [ ] unchecked item\n- [x] checked item\n", "/");
+  await page.goto(baseUrl);
+  const checkboxes = page.locator(".task-list-item input[type='checkbox']");
+  await expect(checkboxes).toHaveCount(2);
+  await expect(checkboxes.nth(0)).not.toBeChecked();
+  await expect(checkboxes.nth(1)).toBeChecked();
+});
+
 test("copy button on code blocks copies code to clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   pushContent("```\nhello world\n```\n", "/");
@@ -154,19 +163,6 @@ test("font select swaps the markdown body font class", async ({ page }) => {
 
   await page.locator("#font-select").selectOption("system");
   await expect(page.locator("#content")).not.toHaveClass(/font-(serif|mono)/);
-});
-
-test("append message extends content without re-rendering from scratch", async ({ page }) => {
-  pushContent("# Start\n\n", "/");
-  await page.goto(baseUrl);
-  await expect(page.locator("h1")).toHaveText("Start");
-
-  // Use the running server's appendContent — the WS listener on the page
-  // will receive the message and re-render the accumulated markdown.
-  const { appendContent } = await import("../dist/web.js");
-  appendContent("More text here.", "/");
-
-  await expect(page.locator("p")).toContainText("More text here.");
 });
 
 test("render_file renders a markdown file from disk", async ({ page }) => {

@@ -183,18 +183,17 @@ export function startWebServer(): Promise<void> {
   });
 }
 
-export function pushContent(content: string, viewPath: string = "/"): void {
+// baseDir must be recorded before the broadcast: the page resolves its images
+// the moment it receives the content.
+export function pushContent(content: string, viewPath: string = "/", baseDir?: string): void {
   const p = normalizePath(viewPath);
   contentByPath.set(p, content);
-  baseDirByPath.delete(p);
+  if (baseDir) {
+    baseDirByPath.set(p, baseDir);
+  } else {
+    baseDirByPath.delete(p);
+  }
   broadcast(p, { type: "render", content });
-}
-
-export function appendContent(content: string, viewPath: string = "/"): void {
-  const p = normalizePath(viewPath);
-  const current = contentByPath.get(p) || "";
-  contentByPath.set(p, current + content);
-  broadcast(p, { type: "append", content });
 }
 
 export async function pushFile(
@@ -203,9 +202,8 @@ export async function pushFile(
 ): Promise<{ resolvedPath: string; bytes: number }> {
   const resolvedPath = path.resolve(filePath);
   const content = await readFile(resolvedPath, "utf8");
-  pushContent(content, viewPath);
   // Relative image paths in a file are written relative to that file.
-  baseDirByPath.set(normalizePath(viewPath), path.dirname(resolvedPath));
+  pushContent(content, viewPath, path.dirname(resolvedPath));
   return { resolvedPath, bytes: Buffer.byteLength(content) };
 }
 

@@ -49,10 +49,8 @@ filesystem path from an `http://` document.
 ![inline](data:image/svg+xml;base64,...)
 ```
 
-Relative paths resolve against **the markdown file's own directory** when the
-page came from `render_file`, so a doc that references `./diagrams/flow.png`
-renders the way it reads on disk. For `render_markdown`, relative paths resolve
-against the server's working directory — prefer absolute paths there.
+Relative paths resolve against **the rendered file's own directory**, so a doc
+that references `./diagrams/flow.png` renders the way it reads on disk.
 
 Behaviour worth knowing:
 
@@ -79,9 +77,10 @@ Claude won't use the viewer unless you tell it to. Add something like this to yo
 ## Markdown Viewer
 
 When presenting plans, architecture designs, code reviews, or any structured analysis,
-use the `render_markdown` tool to render it in the browser viewer. Don't wait to be
-asked — render proactively whenever the output would benefit from rich formatting,
-diagrams, or tables.
+write the content to a markdown file first and then use the `render_file` tool to render
+it in the browser viewer. The `render_file` tool takes a `file` path argument and an
+optional `path` for the viewer tab. Don't wait to be asked — render proactively whenever
+the output would benefit from rich formatting, diagrams, or tables.
 
 Use Mermaid diagrams liberally to visualize architectures, flows, data models, and
 relationships. The viewer supports:
