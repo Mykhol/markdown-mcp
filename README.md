@@ -1,6 +1,6 @@
 # Markdown Viewer MCP Server
 
-An MCP server for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that renders markdown in a browser window with live updates. Supports Mermaid diagrams, KaTeX math, syntax-highlighted code blocks, tables, and GitHub-flavored markdown.
+An MCP server for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that renders markdown in a browser window with live updates. Supports Mermaid diagrams, KaTeX math, syntax-highlighted code blocks, tables, images, and GitHub-flavored markdown.
 
 ![screenshot](screenshot.png)
 
@@ -32,7 +32,42 @@ Or to a project-level `.mcp.json`:
 }
 ```
 
-The server picks a random available port on startup and opens browser tabs automatically when content is rendered.
+The server picks a random available port on startup, binds to loopback only, and opens browser tabs automatically when content is rendered.
+
+## Images
+
+Standard markdown image syntax works, including local files — the server reads
+them off disk and serves them to the page, since a browser can't load a
+filesystem path from an `http://` document.
+
+```markdown
+![absolute](/Users/me/shots/dashboard.png)
+![relative](./diagrams/flow.svg)
+![home-relative](~/Desktop/screenshot.png)
+![file url](file:///Users/me/shots/dashboard.png)
+![remote](https://example.com/chart.png)
+![inline](data:image/svg+xml;base64,...)
+```
+
+Relative paths resolve against **the rendered file's own directory**, so a doc
+that references `./diagrams/flow.png` renders the way it reads on disk.
+
+Behaviour worth knowing:
+
+- An image that is a block of its own is centred, framed, and **click-to-zoom**
+  (Escape or click to dismiss) — the 860px text column downscales most
+  screenshots past readability. Inline images, like badges, are left alone.
+- A path that doesn't resolve renders as a placeholder naming the path that
+  failed, rather than a bare broken-image glyph.
+- PDF export waits for images to decode before measuring the page, so exports
+  aren't truncated.
+- Images are served with `Cache-Control: no-store`, so re-rendering picks up a
+  regenerated chart or screenshot without a hard reload.
+
+Only image file types are served (`png`, `jpg`, `jpeg`, `gif`, `webp`, `svg`,
+`avif`, `bmp`, `ico`, `apng`, `tif`, `tiff`), up to 32MB, over loopback only,
+and cross-site requests are refused. `/__mdv/*` is reserved for the viewer's own
+endpoints and can't be used as a page path.
 
 ## Getting Claude to use it automatically
 
@@ -53,6 +88,7 @@ relationships. The viewer supports:
 - Syntax-highlighted code blocks
 - KaTeX math ($inline$ and $$display$$)
 - Tables, blockquotes, task lists
+- Images, including local file paths — ![alt](/abs/path/shot.png)
 - Dark/light theme with font selection
 
 Use `path` to organize content into separate tabs (e.g. `/plan`, `/review`, `/debug`).

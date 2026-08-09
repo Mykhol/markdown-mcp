@@ -1,16 +1,22 @@
 import { test, expect } from "@playwright/test";
 import WSPkg from "ws";
-import { writeFile, unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtemp, rm, stat, writeFile, unlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   startWebServer,
   pushContent,
   clearContent,
   pushFile,
   getPort,
+  getBaseDir,
+  resolveImagePath,
   listPaths,
 } from "../dist/web.js";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const samplePng = join(repoRoot, "screenshot.png");
 
 const WSClient = WSPkg as unknown as typeof import("ws").WebSocket;
 type WSClient = InstanceType<typeof WSClient>;
@@ -18,11 +24,19 @@ type WSClient = InstanceType<typeof WSClient>;
 test.describe.configure({ mode: "serial" });
 
 let wsBase: string;
+let httpBase: string;
 
 test.beforeAll(async () => {
   await startWebServer();
-  wsBase = `ws://localhost:${getPort()}`;
+  // 127.0.0.1 rather than localhost: the server binds loopback IPv4 only, and
+  // `localhost` can resolve to ::1 first.
+  wsBase = `ws://127.0.0.1:${getPort()}`;
+  httpBase = `http://127.0.0.1:${getPort()}`;
 });
+
+function imageUrl(src: string, from = "/"): string {
+  return `${httpBase}/__mdv/image?src=${encodeURIComponent(src)}&from=${encodeURIComponent(from)}`;
+}
 
 test.afterEach(() => {
   for (const p of listPaths()) clearContent(p);
@@ -131,6 +145,121 @@ test("path normalization treats trailing slash as same path", async () => {
 test("pushFile rejects when the file does not exist", async () => {
   const missing = join(tmpdir(), "render-file-does-not-exist.md");
   await expect(pushFile(missing, "/")).rejects.toThrow();
+});
+
+test.describe("image serving", () => {
+  test("serves a local image with its content type and no caching", async () => {
+    const res = await fetch(imageUrl(samplePng));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("image/png");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect((await res.arrayBuffer()).byteLength).toBe((await stat(samplePng)).size);
+  });
+
+  test("refuses paths that are not image types, so it cannot serve arbitrary files", async () => {
+    const res = await fetch(imageUrl(join(repoRoot, "package.json")));
+    expect(res.status).toBe(415);
+  });
+
+  test("404s a missing image", async () => {
+    const res = await fetch(imageUrl(join(tmpdir(), "definitely-not-here.png")));
+    expect(res.status).toBe(404);
+  });
+
+  test("404s a directory", async () => {
+    const res = await fetch(imageUrl(repoRoot));
+    // A directory has no image extension, so the type gate rejects it first.
+    expect([404, 415]).toContain(res.status);
+  });
+
+  test("refuses cross-site image reads", async () => {
+    const res = await fetch(imageUrl(samplePng), {
+      headers: { "sec-fetch-site": "cross-site" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("allows the viewer page's own same-origin reads", async () => {
+    const res = await fetch(imageUrl(samplePng), {
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("400s when src is missing", async () => {
+    const res = await fetch(`${httpBase}/__mdv/image`);
+    expect(res.status).toBe(400);
+  });
+
+  test("resolves a file:// src", async () => {
+    const res = await fetch(imageUrl(`file://${samplePng}`));
+    expect(res.status).toBe(200);
+  });
+
+  test("resolves a relative, percent-encoded src against the file's directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mdv-img-"));
+    await writeFile(
+      join(dir, "my shot.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>',
+    );
+    const doc = join(dir, "doc.md");
+    await writeFile(doc, "![x](<my shot.svg>)");
+    try {
+      await pushFile(doc, "/spaces");
+      const res = await fetch(imageUrl("my%20shot.svg", "/spaces"));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("image/svg+xml");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test.describe("image path resolution", () => {
+  test("relative paths resolve against the server cwd for pushed markdown", () => {
+    pushContent("![x](shot.png)", "/cwd-base");
+    expect(getBaseDir("/cwd-base")).toBe(process.cwd());
+    expect(resolveImagePath("shot.png", "/cwd-base")).toBe(join(process.cwd(), "shot.png"));
+  });
+
+  test("relative paths resolve against the file's directory after pushFile", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mdv-base-"));
+    const doc = join(dir, "doc.md");
+    await writeFile(doc, "![x](./img/shot.png)");
+    try {
+      await pushFile(doc, "/file-base");
+      expect(getBaseDir("/file-base")).toBe(dir);
+      expect(resolveImagePath("./img/shot.png", "/file-base")).toBe(join(dir, "img", "shot.png"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("pushing plain markdown to a page resets a base dir left by pushFile", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mdv-reset-"));
+    const doc = join(dir, "doc.md");
+    await writeFile(doc, "# doc");
+    try {
+      await pushFile(doc, "/reset-base");
+      expect(getBaseDir("/reset-base")).toBe(dir);
+      pushContent("# plain", "/reset-base");
+      expect(getBaseDir("/reset-base")).toBe(process.cwd());
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("expands ~ to the home directory", () => {
+    expect(resolveImagePath("~/pics/shot.png")).toBe(join(homedir(), "pics", "shot.png"));
+  });
+
+  test("absolute paths ignore the base dir", () => {
+    expect(resolveImagePath("/tmp/a/shot.png", "/cwd-base")).toBe("/tmp/a/shot.png");
+  });
+
+  test("strips a query string from a plain path", () => {
+    expect(resolveImagePath("/tmp/shot.png?v=2")).toBe("/tmp/shot.png");
+  });
 });
 
 test("pushFile renders the file's contents and reports its absolute path and size", async () => {

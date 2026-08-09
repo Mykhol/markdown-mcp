@@ -327,6 +327,64 @@
       background: transparent !important;
     }
 
+    /* --- Images --- */
+    .markdown-body img {
+      max-width: 100%;
+      height: auto;
+      /* github-markdown-css paints an opaque canvas behind images, which shows
+         up as a dark slab around transparent PNGs in light mode. */
+      background: transparent !important;
+    }
+
+    /* An image that is a block of its own reads as a figure: centred, framed so
+       a light screenshot still has an edge, and zoomable. Inline images —
+       badges, icons, linked shields — are left alone. `.standalone` is applied
+       in JS; see markStandaloneImages. */
+    .markdown-body img.standalone {
+      display: block;
+      margin: 12px auto;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      cursor: zoom-in;
+    }
+
+    .markdown-body .img-error {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 8px 12px;
+      border: 1px dashed var(--color-border-hr);
+      border-radius: 8px;
+      color: var(--color-muted);
+      font-size: 13px;
+    }
+
+    /* --- Lightbox --- */
+    #lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      background: rgba(0, 0, 0, 0.86);
+      cursor: zoom-out;
+      isolation: isolate;
+    }
+
+    #lightbox.open {
+      display: flex;
+    }
+
+    #lightbox img {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
     /* --- Empty State --- */
     #empty-state {
       display: flex;
@@ -424,6 +482,7 @@
         print-color-adjust: exact !important;
       }
       #status-bar { display: none !important; }
+      #lightbox { display: none !important; }
       #content-wrapper {
         padding: 32px 40px !important;
         max-width: none !important;
@@ -439,7 +498,7 @@
         print-color-adjust: exact !important;
       }
       /* Avoid breaking inside common elements (only relevant if browser splits anyway) */
-      pre, blockquote, table, .katex-display, pre.mermaid {
+      pre, blockquote, table, .katex-display, pre.mermaid, img {
         break-inside: avoid;
         page-break-inside: avoid;
       }
@@ -467,6 +526,10 @@
     <article id="content" class="markdown-body" style="display:none;"></article>
   </div>
 
+  <div id="lightbox" role="dialog" aria-modal="true" aria-label="Expanded image">
+    <img alt="">
+  </div>
+
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists/dist/markdown-it-task-lists.min.js"></script>
@@ -489,9 +552,16 @@
       const themeToggle = document.getElementById('theme-toggle');
       const fontSelect  = document.getElementById('font-select');
       const pdfButton   = document.getElementById('pdf-button');
+      const lightbox    = document.getElementById('lightbox');
+      const lightboxImg = lightbox.querySelector('img');
 
       // Content state (declared early so applyTheme can reference it)
       let rawMarkdown = '';
+
+      // The page's own URL path — identifies this viewer page to the server for
+      // both the WebSocket subscription and image path resolution.
+      const port = window.location.port || '3333';
+      const viewPath = window.location.pathname || '/';
 
       // -------------------------------------------------------
       // Theme management
@@ -586,6 +656,7 @@
           if (switchedTheme) {
             await applyTheme('light', true);
           }
+          await awaitImages();
 
           // Width: content max-width (860) + print padding (40+40) = 940.
           const widthPx = 940;
@@ -653,6 +724,145 @@
           label: true,      // wrap the label text for proper styling
           lineNumber: false,
         });
+      }
+
+      // -------------------------------------------------------
+      // Images
+      // -------------------------------------------------------
+      // Must match IMAGE_ENDPOINT in web.ts.
+      const IMAGE_ENDPOINT = '/__mdv/image';
+      // Schemes the browser can fetch by itself. Everything else is a
+      // filesystem path — including bare `foo.png` and `/Users/me/foo.png`,
+      // which would otherwise hit the catch-all route and return this page.
+      const SELF_LOADING_SCHEME = /^(?:https?|data|blob):/i;
+
+      function isLocalImageSrc(src) {
+        return !!src && !SELF_LOADING_SCHEME.test(src) && src.indexOf(IMAGE_ENDPOINT) !== 0;
+      }
+
+      // Local paths are read by the server, which resolves them against the base
+      // directory it recorded for this page (the markdown file's own directory
+      // for render_file, its working directory otherwise).
+      function localImageUrl(src) {
+        return IMAGE_ENDPOINT +
+          '?src=' + encodeURIComponent(src) +
+          '&from=' + encodeURIComponent(viewPath);
+      }
+
+      // markdown-it drops `file:` links outright and allows only gif/png/jpeg/webp
+      // data URLs. Both are legitimate for a local viewer — an SVG data URL is
+      // inert inside <img>, and showing local files is this tool's whole job.
+      // javascript:/vbscript: stay blocked by the default check.
+      const defaultValidateLink = md.validateLink;
+      md.validateLink = function (url) {
+        const str = (url || '').trim().toLowerCase();
+        if (str.indexOf('file:') === 0 || str.indexOf('data:image/') === 0) return true;
+        return defaultValidateLink.call(md, url);
+      };
+
+      const defaultImageRenderer = md.renderer.rules.image;
+
+      md.renderer.rules.image = function (tokens, idx, options, env, self) {
+        const token = tokens[idx];
+        const src = token.attrGet('src');
+        if (isLocalImageSrc(src)) {
+          // Keep the authored path for the failure message — the rewritten URL
+          // is noise to anyone trying to fix a bad path.
+          token.attrSet('data-src', src);
+          token.attrSet('src', localImageUrl(src));
+        }
+        return defaultImageRenderer(tokens, idx, options, env, self);
+      };
+
+      // Raw <img> tags in the markdown bypass the renderer rule above, so sweep
+      // the rendered DOM too.
+      function rewriteRawImageTags(root) {
+        root.querySelectorAll('img').forEach(function (img) {
+          const src = img.getAttribute('src');
+          if (!isLocalImageSrc(src)) return;
+          img.setAttribute('data-src', src);
+          img.setAttribute('src', localImageUrl(src));
+        });
+      }
+
+      // Which images get the figure treatment. This can't be a CSS selector:
+      // `p > img:only-child` matches an image surrounded by text, because
+      // :only-child counts element children and ignores text nodes.
+      function markStandaloneImages(root) {
+        root.querySelectorAll('img').forEach(function (img) {
+          const parent = img.parentElement;
+          if (!parent || parent.tagName === 'A') return;
+          // Directly under the article, a raw <img> is already its own block.
+          // Anywhere else — a paragraph, list item, table cell — it only counts
+          // if it is the entire contents of that box.
+          const ownsItsBox = parent === root ||
+            (parent.children.length === 1 && parent.textContent.trim() === '');
+          if (ownsItsBox) img.classList.add('standalone');
+        });
+      }
+
+      // Broken images otherwise show as a bare browser glyph with no hint of
+      // which path failed. `error` doesn't bubble, hence the capture listener.
+      contentEl.addEventListener('error', function (e) {
+        const img = e.target;
+        if (!img || img.tagName !== 'IMG' || img.dataset.failed) return;
+        img.dataset.failed = '1';
+
+        const span = document.createElement('span');
+        span.className = 'img-error';
+        span.appendChild(document.createTextNode('Image failed to load:'));
+        const code = document.createElement('code');
+        code.textContent = img.getAttribute('data-src') || img.getAttribute('src') || '';
+        span.appendChild(code);
+        const alt = img.getAttribute('alt');
+        if (alt) span.appendChild(document.createTextNode('(' + alt + ')'));
+        img.replaceWith(span);
+      }, true);
+
+      // Click a standalone image to see it at full resolution — the 860px text
+      // column downscales most screenshots past readability.
+      function openLightbox(img) {
+        lightboxImg.src = img.currentSrc || img.src;
+        lightboxImg.alt = img.alt || '';
+        lightbox.classList.add('open');
+      }
+
+      function closeLightbox() {
+        lightbox.classList.remove('open');
+        lightboxImg.removeAttribute('src');
+      }
+
+      contentEl.addEventListener('click', function (e) {
+        const img = e.target;
+        if (!img || img.tagName !== 'IMG') return;
+        if (!img.classList.contains('standalone')) return;
+        openLightbox(img);
+      });
+
+      lightbox.addEventListener('click', closeLightbox);
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox();
+      });
+
+      // Images decode asynchronously. A print snapshot taken before they have
+      // intrinsic size measures the wrong document height and truncates the PDF.
+      const IMAGE_WAIT_TIMEOUT_MS = 5000;
+
+      function awaitImages() {
+        const pending = Array.from(contentEl.querySelectorAll('img'))
+          .filter(function (img) { return !img.complete; })
+          .map(function (img) {
+            return new Promise(function (resolve) {
+              img.addEventListener('load', resolve, { once: true });
+              img.addEventListener('error', resolve, { once: true });
+            });
+          });
+        if (pending.length === 0) return Promise.resolve();
+        return Promise.race([
+          Promise.all(pending),
+          new Promise(function (r) { setTimeout(r, IMAGE_WAIT_TIMEOUT_MS); }),
+        ]);
       }
 
       // Override the fence renderer to handle mermaid blocks and add copy buttons
@@ -750,6 +960,9 @@
       }
 
       function postRender() {
+        rewriteRawImageTags(contentEl);
+        markStandaloneImages(contentEl);
+
         // KaTeX auto-render
         if (window.renderMathInElement) {
           renderMathInElement(contentEl, {
@@ -815,9 +1028,10 @@
       // -------------------------------------------------------
       // Path-aware WebSocket with exponential backoff
       // -------------------------------------------------------
-      const port = window.location.port || '3333';
-      const viewPath = window.location.pathname || '/';
-      const wsUrl = 'ws://localhost:' + port + '/?path=' + encodeURIComponent(viewPath);
+      // Follow the page's own host — the server binds loopback only, and
+      // localhost vs 127.0.0.1 vs ::1 must not diverge between page and socket.
+      const wsUrl = 'ws://' + (window.location.hostname || 'localhost') + ':' + port +
+        '/?path=' + encodeURIComponent(viewPath);
 
       // Show path in title and status bar
       if (viewPath !== '/') {

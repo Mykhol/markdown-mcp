@@ -1,6 +1,6 @@
 {
   "name": "mcp-markdown-viewer",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "MCP server that renders markdown in a browser window with live updates",
   "type": "module",
   "main": "dist/server.js",

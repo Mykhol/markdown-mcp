@@ -13,12 +13,12 @@ import {
 
 const server = new McpServer({
   name: "markdown-viewer",
-  version: "1.3.0",
+  version: "1.4.0",
 });
 
 server.tool(
   "render_file",
-  "Render a markdown file from the local filesystem in the browser viewer. Reads the file at call time and renders its current contents (Mermaid, KaTeX, syntax highlighting, tables, and full GitHub-flavored markdown). Use 'path' to render to a separate page/tab. Provide an absolute file path when possible; relative paths resolve against the server's working directory.",
+  "Render a markdown file from the local filesystem in the browser viewer. Reads the file at call time and renders its current contents (Mermaid, KaTeX, syntax highlighting, tables, images, and full GitHub-flavored markdown). Images use standard markdown syntax and may point at local files — ![alt](./diagrams/flow.png) resolves against the rendered file's own directory, so a doc renders the way it reads on disk; absolute paths, ~/…, file:// URLs, http(s) URLs and data: URLs all work too. Use 'path' to render to a separate page/tab. Provide an absolute file path when possible; relative paths resolve against the server's working directory.",
   {
     file: z
       .string()
