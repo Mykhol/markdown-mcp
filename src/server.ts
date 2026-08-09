@@ -15,12 +15,12 @@ import {
 
 const server = new McpServer({
   name: "markdown-viewer",
-  version: "1.3.0",
+  version: "1.4.0",
 });
 
 server.tool(
   "render_markdown",
-  "Render rich markdown in a browser viewer with live updates. Supports Mermaid diagrams (flowcharts, sequence diagrams, ERDs, Gantt charts via ```mermaid code blocks), syntax-highlighted code, KaTeX math, tables, and full GitHub-flavored markdown. Use Mermaid diagrams liberally to visualize architectures, flows, and relationships. Use 'path' to render to separate pages (e.g. /plan, /review, /agent-1) — each path opens its own browser tab.",
+  "Render rich markdown in a browser viewer with live updates. Supports Mermaid diagrams (flowcharts, sequence diagrams, ERDs, Gantt charts via ```mermaid code blocks), syntax-highlighted code, KaTeX math, tables, images, and full GitHub-flavored markdown. Use Mermaid diagrams liberally to visualize architectures, flows, and relationships. Images work with standard markdown syntax — ![alt](/abs/path/shot.png) for local files (absolute paths recommended; relative paths resolve against the server's working directory), plus http(s) and data: URLs. Use 'path' to render to separate pages (e.g. /plan, /review, /agent-1) — each path opens its own browser tab.",
   {
     content: z.string().describe("Markdown content to render"),
     path: z
@@ -52,7 +52,7 @@ server.tool(
 
 server.tool(
   "render_file",
-  "Render a markdown file from the local filesystem in the browser viewer. Reads the file at call time and renders its current contents (Mermaid, KaTeX, syntax highlighting, tables — same as render_markdown). Use 'path' to render to a separate page/tab. Provide an absolute file path when possible; relative paths resolve against the server's working directory.",
+  "Render a markdown file from the local filesystem in the browser viewer. Reads the file at call time and renders its current contents (Mermaid, KaTeX, syntax highlighting, tables, images — same as render_markdown). Relative image paths in the file resolve against the file's own directory, so a doc with ![](./diagrams/flow.png) renders as it would on disk. Use 'path' to render to a separate page/tab. Provide an absolute file path when possible; relative paths resolve against the server's working directory.",
   {
     file: z
       .string()

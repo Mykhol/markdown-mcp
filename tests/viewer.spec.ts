@@ -1,13 +1,21 @@
 import { test, expect } from "@playwright/test";
-import { writeFile, unlink } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   startWebServer,
   pushContent,
   clearContent,
   getPort,
 } from "../dist/web.js";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const samplePng = join(repoRoot, "screenshot.png");
+
+const SVG_FIXTURE =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="24">' +
+  '<rect width="40" height="24" fill="#4488cc"/></svg>';
 
 test.describe.configure({ mode: "serial" });
 
@@ -175,7 +183,163 @@ test("render_file renders a markdown file from disk", async ({ page }) => {
   }
 });
 
+test.describe("images", () => {
+  // A loaded raster image reports its real pixel dimensions; a broken one is 0.
+  const naturalWidth = (page: import("@playwright/test").Page) =>
+    page.locator("#content img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth);
+
+  test("renders a local absolute path by routing it through the image endpoint", async ({ page }) => {
+    pushContent(`![shot](${samplePng})\n`, "/");
+    await page.goto(baseUrl);
+
+    const img = page.locator("#content img");
+    await expect(img).toHaveAttribute("src", /^\/__mdv\/image\?src=/);
+    // The authored path is kept for diagnostics.
+    await expect(img).toHaveAttribute("data-src", samplePng);
+    await expect.poll(() => naturalWidth(page)).toBeGreaterThan(0);
+  });
+
+  test("resolves a relative image path against the rendered file's directory", async ({ page }) => {
+    const { pushFile } = await import("../dist/web.js");
+    const dir = await mkdtemp(join(tmpdir(), "mdv-view-"));
+    await writeFile(join(dir, "pic.svg"), SVG_FIXTURE);
+    const doc = join(dir, "doc.md");
+    await writeFile(doc, "# Doc\n\n![pic](./pic.svg)\n");
+    try {
+      await pushFile(doc, "/");
+      await page.goto(baseUrl);
+      await expect(page.locator("#content img")).toBeVisible();
+      await expect.poll(() => naturalWidth(page)).toBe(40);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves remote and data URLs untouched", async ({ page }) => {
+    const dataUrl = `data:image/svg+xml;base64,${Buffer.from(SVG_FIXTURE).toString("base64")}`;
+    pushContent(`![remote](https://example.com/a.png)\n\n![inline](${dataUrl})\n`, "/");
+    await page.goto(baseUrl);
+
+    const srcs = await page.locator("#content img").evaluateAll((els) =>
+      els.map((el) => el.getAttribute("src")),
+    );
+    expect(srcs[0]).toBe("https://example.com/a.png");
+    expect(srcs[1]).toBe(dataUrl);
+    // The inline SVG must actually decode — proof the data URL survived intact.
+    await expect
+      .poll(() =>
+        page.locator("#content img").nth(1).evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      )
+      .toBe(40);
+  });
+
+  test("renders a file:// URL, which markdown-it blocks by default", async ({ page }) => {
+    pushContent(`![shot](file://${samplePng})\n`, "/");
+    await page.goto(baseUrl);
+
+    await expect(page.locator("#content img")).toHaveAttribute("src", /^\/__mdv\/image\?src=/);
+    await expect.poll(() => naturalWidth(page)).toBeGreaterThan(0);
+  });
+
+  test("still refuses a javascript: image src", async ({ page }) => {
+    pushContent("![x](javascript:alert(1))\n", "/");
+    await page.goto(baseUrl);
+
+    await expect(page.locator("#content p")).toBeVisible();
+    await expect(page.locator("#content img")).toHaveCount(0);
+  });
+
+  test("rewrites raw <img> tags in the markdown too", async ({ page }) => {
+    pushContent(`<img src="${samplePng}" alt="raw">\n`, "/");
+    await page.goto(baseUrl);
+
+    await expect(page.locator("#content img")).toHaveAttribute("src", /^\/__mdv\/image\?src=/);
+    await expect.poll(() => naturalWidth(page)).toBeGreaterThan(0);
+  });
+
+  test("shows the authored path when an image fails to load", async ({ page }) => {
+    pushContent("![missing](/nope/not-here.png)\n", "/");
+    await page.goto(baseUrl);
+
+    const err = page.locator("#content .img-error");
+    await expect(err).toBeVisible();
+    await expect(err).toContainText("Image failed to load");
+    await expect(err.locator("code")).toHaveText("/nope/not-here.png");
+    await expect(err).toContainText("missing");
+    await expect(page.locator("#content img")).toHaveCount(0);
+  });
+
+  test("a standalone image is framed and zoomable; an inline one is not", async ({ page }) => {
+    pushContent(`![alone](${samplePng})\n\ntext ![badge](${samplePng}) more text\n`, "/");
+    await page.goto(baseUrl);
+
+    const images = page.locator("#content img");
+    await expect(images).toHaveCount(2);
+    await expect(images.nth(0)).toHaveClass(/standalone/);
+    await expect(images.nth(1)).not.toHaveClass(/standalone/);
+    expect(await images.nth(0).evaluate((el) => getComputedStyle(el).cursor)).toBe("zoom-in");
+    expect(await images.nth(1).evaluate((el) => getComputedStyle(el).cursor)).not.toBe("zoom-in");
+    expect(await images.nth(0).evaluate((el) => getComputedStyle(el).display)).toBe("block");
+    expect(await images.nth(1).evaluate((el) => getComputedStyle(el).display)).toBe("inline");
+  });
+
+  test("a linked image stays a link, not a zoom target", async ({ page }) => {
+    pushContent(`[![badge](${samplePng})](https://example.com)\n`, "/");
+    await page.goto(baseUrl);
+
+    await expect(page.locator("#content a img")).toHaveCount(1);
+    await expect(page.locator("#content img")).not.toHaveClass(/standalone/);
+  });
+
+  test("clicking a standalone image opens the lightbox, Escape closes it", async ({ page }) => {
+    pushContent(`![shot](${samplePng})\n`, "/");
+    await page.goto(baseUrl);
+    await expect.poll(() => naturalWidth(page)).toBeGreaterThan(0);
+
+    await expect(page.locator("#lightbox")).toBeHidden();
+    await page.locator("#content img").click();
+    await expect(page.locator("#lightbox")).toBeVisible();
+    await expect(page.locator("#lightbox img")).toHaveAttribute("src", /__mdv\/image/);
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#lightbox")).toBeHidden();
+  });
+
+  test("clicking an inline image does not open the lightbox", async ({ page }) => {
+    pushContent(`text ![badge](${samplePng}) more\n`, "/");
+    await page.goto(baseUrl);
+    await expect.poll(() => naturalWidth(page)).toBeGreaterThan(0);
+
+    await page.locator("#content img").click();
+    await expect(page.locator("#lightbox")).toBeHidden();
+  });
+});
+
 test.describe("PDF export", () => {
+  test("waits for images to load before sizing the page", async ({ page }) => {
+    pushContent(`# With an image\n\n![shot](${samplePng})\n`, "/");
+    await page.goto(baseUrl);
+
+    await page.evaluate(() => {
+      (window as unknown as { __rule: string }).__rule = "";
+      window.print = () => {
+        const ps = document.getElementById("dynamic-page-size");
+        (window as unknown as { __rule: string }).__rule = ps?.textContent ?? "";
+      };
+    });
+
+    // Click without waiting for the image, so the export itself has to.
+    await page.locator("#pdf-button").click();
+    await expect(page.locator("#pdf-button")).toBeEnabled();
+
+    const rule = await page.evaluate(() => (window as unknown as { __rule: string }).__rule);
+    const height = Number(rule.match(/size:\s*\d+px\s+(\d+)px/)![1]);
+    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    // The image is tall; if the snapshot had been taken before it loaded, the
+    // page would have been sized to the heading alone.
+    expect(height).toBeGreaterThanOrEqual(scrollHeight);
+  });
+
   test("forces light theme during print and restores after", async ({ page }) => {
     pushContent("# PDF Test\n\n```mermaid\nflowchart LR\n  A --> B\n```\n", "/");
     await page.goto(baseUrl);
