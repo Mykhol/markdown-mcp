@@ -165,6 +165,29 @@ test("font select swaps the markdown body font class", async ({ page }) => {
   await expect(page.locator("#content")).not.toHaveClass(/font-(serif|mono)/);
 });
 
+test("list items and nested lists get generous default spacing", async ({ page }) => {
+  pushContent("- one\n- two\n  - nested\n  - nested two\n", "/");
+  await page.goto(baseUrl);
+
+  const items = page.locator("#content > ul > li");
+  await expect(items).toHaveCount(2);
+
+  const siblingGap = await items
+    .nth(1)
+    .evaluate((el) => parseFloat(getComputedStyle(el).marginTop));
+  expect(siblingGap).toBeGreaterThanOrEqual(8);
+
+  const nested = await page.locator("#content ul ul").evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      top: parseFloat(style.marginTop),
+      bottom: parseFloat(style.marginBottom),
+    };
+  });
+  expect(nested.top).toBeGreaterThanOrEqual(8);
+  expect(nested.bottom).toBeGreaterThanOrEqual(8);
+});
+
 test("render_file renders a markdown file from disk", async ({ page }) => {
   const { pushFile } = await import("../dist/web.js");
   const filePath = join(tmpdir(), `render-file-${Date.now()}.md`);
