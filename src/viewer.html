@@ -457,6 +457,17 @@
       overflow-y: hidden;
     }
 
+    /* --- Lists --- */
+    .markdown-body li + li {
+      margin-top: 0.5em;
+    }
+
+    .markdown-body li > ul,
+    .markdown-body li > ol {
+      margin-top: 0.5em;
+      margin-bottom: 0.5em;
+    }
+
     /* --- GitHub-style task list checkboxes --- */
     .markdown-body .task-list-item {
       list-style-type: none;
