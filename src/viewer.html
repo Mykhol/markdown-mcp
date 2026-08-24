@@ -1052,7 +1052,10 @@
 
       let ws = null;
       let reconnectDelay = 500;   // ms, starting delay
-      const MAX_RECONNECT_DELAY = 30000;
+      // Loopback, and the server it reconnects to may be a different session's
+      // process that just took the port over — so keep the ceiling short enough
+      // that a promoted host sees this page come back before it opens another.
+      const MAX_RECONNECT_DELAY = 2000;
       let reconnectTimer = null;
 
       function setStatus(state, text) {

@@ -32,7 +32,48 @@ Or to a project-level `.mcp.json`:
 }
 ```
 
-The server picks a random available port on startup, binds to loopback only, and opens browser tabs automatically when content is rendered.
+The server binds to loopback only and opens browser tabs automatically when content is rendered.
+
+## One viewer, shared by every session
+
+MCP servers run over stdio, so your editor starts a separate server process for
+each session. They still share a single viewer: on startup each process tries to
+bind port **7391**, and whichever one wins serves the pages. The rest become thin
+clients and push their renders to it over loopback. The port is the lock — there
+is no daemon and no lock file.
+
+What this buys you:
+
+- **The URL never changes.** `http://localhost:7391` is stable for as long as any
+  session is alive, so a bookmarked tab keeps working.
+- **One tab per page path**, not one per session. A tab is opened only when a page
+  has no live viewer attached, which also means closing a tab and re-rendering
+  brings it back.
+- **Every session sees the same pages.** `list_viewers` and `clear_viewer` act on
+  the shared set, whichever session calls them.
+
+When the process that owns the port exits, the next render from any other session
+takes the port over. The page reconnects on its own — it retries with backoff and
+is sent the current content on connect — so the tab recovers at the same URL.
+Pages whose content lived only in the departed process come back blank until
+something renders them again.
+
+| Variable | Effect |
+|---|---|
+| `MDV_PORT=<n>` | Share on port `<n>` instead of 7391. |
+| `MDV_PORT=0` | Don't share — take a private random port, as versions before 1.5.0 did. |
+| `MDV_NO_OPEN=1` | Never launch a browser; just serve. Useful over SSH and in CI. |
+
+If port 7391 is held by an unrelated program, the server says so and falls back to
+a private random port rather than talking to a stranger — it identifies siblings
+with a handshake on `/__mdv/health` first.
+
+Since the port is well-known, every way into the server is pinned to loopback: the
+control endpoints require a loopback `Host` header (which is what blocks DNS
+rebinding), a same-origin fetch, and a JSON content type, and the WebSocket that
+carries the page content refuses any upgrade whose `Origin` or `Host` isn't
+loopback. A page you happen to have open on some other local port cannot read
+your rendered documents.
 
 ## Images
 
