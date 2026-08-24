@@ -13,6 +13,7 @@ import {
   getBaseDir,
   resolveImagePath,
   listPaths,
+  shouldOpenBrowser,
 } from "../dist/web.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,6 +29,9 @@ let httpBase: string;
 
 test.beforeAll(async () => {
   await startWebServer();
+  // Backstop for the isolation set in playwright.config.ts — landing on the
+  // shared default would mean this suite is driving the developer's viewer.
+  expect(getPort()).not.toBe(7391);
   // 127.0.0.1 rather than localhost: the server binds loopback IPv4 only, and
   // `localhost` can resolve to ::1 first.
   wsBase = `ws://127.0.0.1:${getPort()}`;
@@ -145,6 +149,66 @@ test("path normalization treats trailing slash as same path", async () => {
 test("pushFile rejects when the file does not exist", async () => {
   const missing = join(tmpdir(), "render-file-does-not-exist.md");
   await expect(pushFile(missing, "/")).rejects.toThrow();
+});
+
+// The upgrade never passes through Express, so the HTTP guards do not cover it
+// — and this socket is the only thing that ever sends page content anywhere.
+test.describe("WebSocket origin guard", () => {
+  function upgrade(headers: Record<string, string>): Promise<string> {
+    const ws = new WSClient(`${wsBase}/?path=/`, { headers });
+    return new Promise((settle) => {
+      ws.once("open", () => {
+        ws.close();
+        settle("accepted");
+      });
+      ws.once("unexpected-response", (_req, res) => settle(`rejected ${res.statusCode}`));
+      ws.once("error", () => settle("rejected"));
+    });
+  }
+
+  test("refuses an upgrade from a foreign origin", async () => {
+    pushContent("# secret", "/");
+    expect(await upgrade({ Origin: "https://evil.example.com" })).not.toBe("accepted");
+  });
+
+  test("refuses an upgrade carrying a rebound Host", async () => {
+    expect(await upgrade({ Host: "evil.example.com" })).not.toBe("accepted");
+  });
+
+  test("refuses the opaque origin a file:// or sandboxed page sends", async () => {
+    expect(await upgrade({ Origin: "null" })).not.toBe("accepted");
+  });
+
+  test("accepts the viewer page's own origin", async () => {
+    expect(await upgrade({ Origin: `http://localhost:${getPort()}` })).toBe("accepted");
+  });
+
+  test("accepts a client that sends no origin, which is how siblings connect", async () => {
+    expect(await upgrade({})).toBe("accepted");
+  });
+});
+
+test.describe("deciding whether to open a tab", () => {
+  test("opens for an unattended page, not for one with a viewer already on it", async () => {
+    expect(shouldOpenBrowser("/attended")).toBe(true);
+
+    const { ws, firstMessage } = connect("/attended");
+    await firstMessage;
+    expect(shouldOpenBrowser("/attended")).toBe(false);
+
+    // Closing the tab makes the page unattended again — the flag this replaced
+    // never noticed, so a re-render after closing a tab showed nothing.
+    ws.close();
+    await expect.poll(() => shouldOpenBrowser("/attended")).toBe(true);
+  });
+
+  test("a viewer on one path does not suppress opening another", async () => {
+    const { ws, firstMessage } = connect("/one-path");
+    await firstMessage;
+    expect(shouldOpenBrowser("/one-path")).toBe(false);
+    expect(shouldOpenBrowser("/other-path")).toBe(true);
+    ws.close();
+  });
 });
 
 test.describe("image serving", () => {

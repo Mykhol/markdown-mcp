@@ -4,16 +4,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   startWebServer,
-  clearContent,
-  pushFile,
-  openBrowser,
-  getPort,
-  listPaths,
+  renderFile,
+  clearViewer,
+  activePaths,
+  viewerUrl,
 } from "./web.js";
+import { VERSION } from "./version.js";
 
 const server = new McpServer({
   name: "markdown-viewer",
-  version: "1.4.0",
+  version: VERSION,
 });
 
 server.tool(
@@ -35,17 +35,12 @@ server.tool(
   async ({ file, path }) => {
     const viewPath = path || "/";
     try {
-      const { resolvedPath, bytes } = await pushFile(file, viewPath);
-      await openBrowser(viewPath);
-      const url =
-        viewPath === "/"
-          ? `http://localhost:${getPort()}`
-          : `http://localhost:${getPort()}${viewPath}`;
+      const { resolvedPath, bytes } = await renderFile(file, viewPath);
       return {
         content: [
           {
             type: "text",
-            text: `Rendered ${resolvedPath} (${bytes} bytes) in viewer at ${url}`,
+            text: `Rendered ${resolvedPath} (${bytes} bytes) in viewer at ${viewerUrl(viewPath)}`,
           },
         ],
       };
@@ -75,17 +70,14 @@ server.tool(
       ),
   },
   async ({ path }) => {
-    if (path === "*") {
-      for (const p of listPaths()) {
-        clearContent(p);
-      }
-      return {
-        content: [{ type: "text", text: "All viewer pages cleared" }],
-      };
-    }
-    clearContent(path || "/");
+    await clearViewer(path || "/");
     return {
-      content: [{ type: "text", text: "Viewer cleared" }],
+      content: [
+        {
+          type: "text",
+          text: path === "*" ? "All viewer pages cleared" : "Viewer cleared",
+        },
+      ],
     };
   },
 );
@@ -95,15 +87,13 @@ server.tool(
   "List all active viewer pages that currently have content.",
   {},
   async () => {
-    const paths = listPaths();
+    const paths = await activePaths();
     if (paths.length === 0) {
       return {
         content: [{ type: "text", text: "No active viewer pages" }],
       };
     }
-    const lines = paths.map(
-      (p) => `- http://localhost:${getPort()}${p === "/" ? "" : p}`,
-    );
+    const lines = paths.map((p) => `- ${viewerUrl(p)}`);
     return {
       content: [
         {
@@ -115,7 +105,7 @@ server.tool(
   },
 );
 
-// Start the web server first (OS picks a free port)
+// Claim or join the shared viewer before serving any tool calls.
 await startWebServer();
 
 // Then connect MCP over stdio
