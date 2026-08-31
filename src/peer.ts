@@ -34,7 +34,7 @@ function delay(ms: number): Promise<void> {
 }
 
 // `MDV_PORT=0` opts out of sharing entirely and takes a private random port.
-function preferredPort(): number | null {
+export function preferredPort(): number | null {
   const raw = process.env.MDV_PORT;
   if (raw === undefined || raw === "") return DEFAULT_PORT;
   const parsed = Number(raw);
@@ -62,7 +62,9 @@ function listenOn(port: number): Promise<Server | null> {
   });
 }
 
-async function isSiblingViewer(port: number): Promise<boolean> {
+// Also how the CLI tells a running viewer from a stranger before it pushes a
+// render — same handshake, same constant, so the two entry points agree.
+export async function isSiblingViewer(port: number): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}${HEALTH_ENDPOINT}`, {
@@ -118,10 +120,10 @@ async function elect(): Promise<ViewerMode> {
 export async function join(
   app: () => RequestListener,
   sockets: (server: Server) => void,
-): Promise<void> {
+): Promise<ViewerMode> {
   buildApp = app;
   attachSockets = sockets;
-  await elect();
+  return elect();
 }
 
 // Anything undici throws for a loopback request is a transport failure: the only

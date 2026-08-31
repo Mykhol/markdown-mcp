@@ -1,8 +1,37 @@
 # Markdown Viewer MCP Server
 
-An MCP server for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that renders markdown in a browser window with live updates. Supports Mermaid diagrams, KaTeX math, syntax-highlighted code blocks, tables, images, and GitHub-flavored markdown.
+An MCP server and a CLI that render markdown in a browser window with live updates. Supports Mermaid diagrams, KaTeX math, syntax-highlighted code blocks, tables, images, and GitHub-flavored markdown.
 
 ![screenshot](screenshot.png)
+
+## The command line
+
+The same viewer, without MCP. Agents and scripts that never speak MCP — a shell, a
+sandboxed coding agent, CI — reach it through the `mdv` binary:
+
+```bash
+npx mcp-markdown-viewer render plan.md            # opens http://localhost:7391/
+mdv render review.md --path /review               # a second page, its own tab
+mdv render - --path /scratch < notes.md           # render stdin
+mdv list                                          # pages with content
+mdv clear /review                                 # drop one page ('*' clears all)
+mdv stop                                          # end the detached viewer
+mdv serve                                         # hold the viewer open, no render
+```
+
+Commands are one-shot: the first `render` starts a detached viewer process that
+outlives it — the same election and the same pages the MCP server uses, so a
+tab an MCP session opened is the tab the CLI pushes to. `--no-open` skips the
+browser (the viewer serves the page anyway), which is what scripts and CI want;
+`MDV_NO_OPEN=1` says the same thing by environment.
+
+| Variable | Effect |
+|---|---|
+| `MDV_PORT=<n>` | Share on port `<n>` instead of 7391. |
+| `MDV_NO_OPEN=1` | Never launch a browser; just serve. |
+
+`mdv render -` reads stdin, through a temp file in the working directory so
+relative image paths resolve the way they would if the pipe had been a file.
 
 ## Install
 

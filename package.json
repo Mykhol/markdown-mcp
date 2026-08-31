@@ -1,11 +1,12 @@
 {
   "name": "mcp-markdown-viewer",
-  "version": "1.5.0",
-  "description": "MCP server that renders markdown in a browser window with live updates",
+  "version": "1.6.0",
+  "description": "MCP server and CLI that render markdown in a browser window with live updates",
   "type": "module",
   "main": "dist/server.js",
   "bin": {
-    "mcp-markdown-viewer": "dist/server.js"
+    "mcp-markdown-viewer": "dist/server.js",
+    "mdv": "dist/cli.js"
   },
   "files": [
     "dist",

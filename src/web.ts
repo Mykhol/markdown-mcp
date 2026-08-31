@@ -21,6 +21,7 @@ import {
   hostUptimeMs,
   join,
   viaHost,
+  type ViewerMode,
 } from "./peer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -223,9 +224,11 @@ function buildApp(): express.Express {
     const viewPath = normalizePath(
       typeof req.body?.path === "string" ? req.body.path : "/",
     );
+    // The CLI passes `open: false` for CI and scripts; absent means open.
+    const openTab = req.body?.open !== false;
     try {
       const result = await pushFile(file, viewPath);
-      await openBrowser(viewPath);
+      if (openTab) await openBrowser(viewPath);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
@@ -286,7 +289,7 @@ function attachWebSocket(server: Server): void {
   });
 }
 
-export function startWebServer(): Promise<void> {
+export function startWebServer(): Promise<ViewerMode> {
   return join(buildApp, attachWebSocket);
 }
 
